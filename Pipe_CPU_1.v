@@ -31,7 +31,7 @@ wire [63:0] if_id_r;
 /**** ID stage ****/
 //data signal
 wire [31:0] sign_extend;
-wire [10+32+32+32+32+5+5-1:0] id_ex_r;
+wire [10+32+32+32+32+5+5+5-1:0] id_ex_r;
 wire [31:0] r1_data;
 wire [31:0] r2_data;
 //control signal
@@ -48,7 +48,11 @@ wire memtoreg_o;
 /**** EX stage ****/
 wire [31:0] alu_result;
 wire [31:0] add_result;
-wire [4:0] regdst;
+wire zero;
+wire [3:0] ctrl;
+wire rs_shamt;
+wire [31:0] src1;
+wire [31:0] src2;
 //control signal
 wire [19:0] ex_mem_r;
 
@@ -67,33 +71,33 @@ Instnatiate modules
 ****************************************/
 //Instantiate the components in IF stage
 MUX_2to1 #(.size(32)) Mux1(
-      .data0_i(pc_next),
-      .data1_i(),//later
-		.select_i(),//later 
-		.data_o(pc_in)
+       .data0_i(pc_next),
+       .data1_i(),//later
+	   .select_i(),//later 
+	   .data_o(pc_in)
 		);
 
 ProgramCounter PC(
-		.clk_i(clk_i),
+	   .clk_i(clk_i),
 	   .rst_i(rst_i),
 	   .pc_in_i(pc_in),
 	   .pc_out_o(pc_out)
         );
 
 Instr_Memory IM(
-      .addr_i(pc_out),
+       .addr_i(pc_out),
 	   .instr_o(instruction)
 	    );
 
 Adder Add_pc(
-		.src1_i(32'd4),
+	   .src1_i(32'd4),
 	   .src2_i(pc_out),
 	   .sum_o(pc_next)
 		);
 
 		
 Pipe_Reg #(.size(64)) IF_ID(       //N is the total length of input/output
-      .clk_i(clk_i),
+       .clk_i(clk_i),
 	   .rst_i(rst_i),
 	   .data_i({pc_next , instruction}),
 	   .data_o(if_id_r)
@@ -102,18 +106,18 @@ Pipe_Reg #(.size(64)) IF_ID(       //N is the total length of input/output
 //Instantiate the components in ID stage
 Reg_File RF(
       .clk_i(clk_i),
-		.rst_i(rst_i),
+	  .rst_i(rst_i),
       .RSaddr_i(if_id_r[25:21]),
       .RTaddr_i(if_id_r[20:16]),
-      .RDaddr_i(),//later
-      .RDdata_i(),//later
-      .RegWrite_i(),//later
+      .RDaddr_i(),//later wb
+      .RDdata_i(),//later wb
+      .RegWrite_i(),//later wb
       .RSdata_o(r1_data),
       .RTdata_o(r2_data)
 		);
 
 Decoder Control(
-     .instr_op_i(if_id_r[31:26]),
+      .instr_op_i(if_id_r[31:26]),
 	  .RegWrite_o(regwrite_o),
 	  .ALU_op_o(alu_op_o),
 	  .ALUSrc_o(alusrc_o),
@@ -122,58 +126,89 @@ Decoder Control(
 	  .MemRead_o(memread_o),
 	  .MemWrite_o(memwrite_o),
 	  .MemToReg_o(memtoreg_o),
-	  //.Branchtype_o(branchtype_o)
 		);
 
 Sign_Extend Sign_Extend(
-     .data_i(if_id_r[15:0]),
-     .data_o(sign_extend)
+      .data_i(if_id_r[15:0]),
+      .data_o(sign_extend)
 		);	
 
-Pipe_Reg #(.size(10+32+32+32+32+5+5)) ID_EX(
+Pipe_Reg #(.size(10+32+32+32+32+5+5+5)) ID_EX(
       .clk_i(clk_i),
-	   .rst_i(rst_i),
-	   .data_i({regwrite_o , memtoreg_o , branch_o , memwrite_o , memread_o , alusrc_o , alu_op_o , regdst_o}),
-	   .data_o(id_ex_r)
+	  .rst_i(rst_i),
+	  .data_i({regwrite_o , memtoreg_o , branch_o , memwrite_o , memread_o , alusrc_o , alu_op_o , regdst_o , if_id_r[63:32] , r1_data , r2_data ,      	 sign_extend , if_id_r[20:16] , if_id_r[15:11] , if_id_r[5:0]}),
+	  .data_o(id_ex_r)
 		);
 
 //Instantiate the components in EX stage	   
 ALU ALU(
-
+	  .rst_i(rst_i),
+      .src1_i(src1),
+      .src2_i(src2),
+	  .ctrl_i(ctrl),
+      .result_o(alu_result),
+	  .zero_o(zero)
 		);
 
 ALU_Ctrl ALU_Ctrl(
-
+      .funct_i(id_ex_r[5:0]),
+      .ALUOp_i(id_ex_r[147:145]),
+      .ALUCtrl_o(ctrl),
+	  .ALU_o(rs_shamt),
 		);
 
 MUX_2to1 #(.size(32)) Mux2(
-
+      .data0_i(if_id_r[79:48]),
+      .data1_i(if_id_r[47:16]),
+	  .select_i(), 
+	  .data_o(src2)
         );
-
+MUX_2to1 #(.size(32)) Mux_for_sll(
+      .data0_i(if_id_r[79:48]),
+      .data1_i(if_id_r[46:15]),
+	  .select_i(rs_shamt), 
+	  .data_o(src1)
+        );
 MUX_2to1 #(.size(5)) Mux3(
-
+      .data0_i(),
+      .data1_i(),
+	  .select_i(), 
+	  .data_o()
         );
 
 Pipe_Reg #(.size(N)) EX_MEM(
-
+       .clk_i(clk_i),
+	   .rst_i(rst_i),
+	   .data_i(),
+	   .data_o(ex_mem_r)
 		);
 
 //Instantiate the components in MEM stage
 Data_Memory DM(
-
+	   .clk_i(),
+	   .addr_i(),
+	   .data_i(),
+	   .MemRead_i(),
+	   .MemWrite_i(),
+	   .data_o()
 	    );
 
 Pipe_Reg #(.size(N)) MEM_WB(
-        
+        .clk_i(clk_i),
+	   .rst_i(rst_i),
+	   .data_i({pc_next , instruction}),
+	   .data_o(if_id_r)       
 		);
 
 //Instantiate the components in WB stage
 MUX_2to1 #(.size(32)) Mux4(
-
+       .data0_i(pc_next),
+       .data1_i(),//later
+	   .select_i(),//later 
+	   .data_o(pc_in)
         );
 
 /****************************************
 signal assignment
 ****************************************/	
 endmodule
-
