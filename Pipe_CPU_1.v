@@ -53,13 +53,14 @@ wire [3:0] ctrl;
 wire rs_shamt;
 wire [31:0] src1;
 wire [31:0] src2;
+wire [4:0] write_addr;
 //control signal
-wire [19:0] ex_mem_r;
+wire [49:0] ex_mem_r;
 
 /**** MEM stage ****/
 
 //control signal
-
+wire [32:0] mem_wb_r;
 
 /**** WB stage ****/
 
@@ -158,34 +159,34 @@ ALU_Ctrl ALU_Ctrl(
 		);
 
 MUX_2to1 #(.size(32)) Mux2(
-      .data0_i(if_id_r[79:48]),
-      .data1_i(if_id_r[47:16]),
-	  .select_i(), 
+      .data0_i(id_ex_r[79:48]),
+      .data1_i(id_ex_r[47:16]),
+	  .select_i(id_ex_r[148]), 
 	  .data_o(src2)
         );
 MUX_2to1 #(.size(32)) Mux_for_sll(
-      .data0_i(if_id_r[79:48]),
-      .data1_i(if_id_r[46:15]),
+      .data0_i(id_ex_r[79:48]),
+      .data1_i({27'd0 , id_ex_r[26:22]}),
 	  .select_i(rs_shamt), 
 	  .data_o(src1)
         );
 MUX_2to1 #(.size(5)) Mux3(
-      .data0_i(),
-      .data1_i(),
-	  .select_i(), 
-	  .data_o()
+      .data0_i(id_ex_r[15:11]),
+      .data1_i(id_ex_r[10:6]),
+	  .select_i(id_ex_r[144]), 
+	  .data_o(write_addr)
         );
 
 Pipe_Reg #(.size(N)) EX_MEM(
        .clk_i(clk_i),
 	   .rst_i(rst_i),
-	   .data_i(),
+	   .data_i({id_ex_r[153:149],  , alu_result , id_ex_r[79:48] , write_addr }),
 	   .data_o(ex_mem_r)
 		);
 
 //Instantiate the components in MEM stage
 Data_Memory DM(
-	   .clk_i(),
+	   .clk_i(clk_i),
 	   .addr_i(),
 	   .data_i(),
 	   .MemRead_i(),
@@ -196,16 +197,16 @@ Data_Memory DM(
 Pipe_Reg #(.size(N)) MEM_WB(
         .clk_i(clk_i),
 	   .rst_i(rst_i),
-	   .data_i({pc_next , instruction}),
-	   .data_o(if_id_r)       
+	   .data_i(),
+	   .data_o()       
 		);
 
 //Instantiate the components in WB stage
 MUX_2to1 #(.size(32)) Mux4(
-       .data0_i(pc_next),
-       .data1_i(),//later
-	   .select_i(),//later 
-	   .data_o(pc_in)
+       .data0_i(),
+       .data1_i(),
+	   .select_i(), 
+	   .data_o()
         );
 
 /****************************************
